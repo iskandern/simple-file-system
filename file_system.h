@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <malloc.h>
-#include <mem.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -10,9 +10,11 @@
 #define FILE_NAME "fs.txt"
 #define MAX_FS_SIZE 4084
 #define BLOCK_SIZE 512
-#define MAX_NAME_LENGTH 32
+#define MAX_NAME_LENGTH 16
 #define MAX_INODE_BLOCKS 8
 
+extern char outData[MAX_INODE_BLOCKS * BLOCK_SIZE + MAX_NAME_LENGTH + MAX_NAME_LENGTH + 2];
+extern size_t outDataPos;
 
 enum FSObjectType {
     ANY_TYPE,

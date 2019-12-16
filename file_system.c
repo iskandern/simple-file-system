@@ -1,5 +1,8 @@
 #include "file_system.h"
 
+char outData[MAX_INODE_BLOCKS * BLOCK_SIZE + MAX_NAME_LENGTH + MAX_NAME_LENGTH + 2];
+size_t outDataPos = 0;
+
 // just calculating iNode and blocks number
 void calculate (double iNodesNumPerBlock, size_t minBlockNum, size_t minINodeNum, size_t* resultBlocksNum, size_t* resultINodesNum) {
     if (sizeof(struct SuperBlock) + (sizeof(size_t) + sizeof(struct INode)) * minINodeNum +
@@ -71,7 +74,8 @@ void calculate (double iNodesNumPerBlock, size_t minBlockNum, size_t minINodeNum
 void initFS() {
     fileSystem.file = fopen(FILE_NAME, "w+b");
     if (fileSystem.file == NULL) {
-        printf("can't open the file %s\n", FILE_NAME);
+        sprintf(outData, "can't open the file %s\n", FILE_NAME);
+        return;
     }
 
     strncpy(fileSystem.name, FILE_NAME, strlen(FILE_NAME));
@@ -176,7 +180,7 @@ size_t resetFreeINodeNum() {
 
     size_t freeINodeNumPosMax = getItemFromSuperBlock(INODE_POINTER_ITEM) - 1;
     if (freeINodeNumPos >= freeINodeNumPosMax) {
-        printf("out of memory (iNodes)\n");
+        sprintf(outData, "out of memory (iNodes)\n");
         return SIZE_MAX;
     }
 
@@ -202,7 +206,7 @@ size_t resetFreeBlocksNum() {
     size_t freeBlocksNumPosMax = SUPER_BLOCK_ITEM_NUM * sizeof(size_t) +
                                  getItemFromSuperBlock(POSSIBLE_BLOCKS_NUM_ITEM) * sizeof(size_t);
     if (freeBlocksNumPos >= freeBlocksNumPosMax) {
-        printf("out of memory (blocks)\n");
+        sprintf(outData,"out of memory (blocks)\n");
         return SIZE_MAX;
     }
 
@@ -373,7 +377,7 @@ size_t OperateWithNameInINode(enum OperateType operation, size_t iNodeInd, const
     }
 
     if (operation == CREATE_LINK_TO_NAME) {
-        printf("segFault\n");
+        sprintf(outData,"segFault\n");
     }
 
     return SIZE_MAX;
@@ -399,7 +403,7 @@ bool createINode(size_t INodeInd, enum FSObjectType type, const void* data, size
         size_t remainder = sizeOfData - blocksNum * BLOCK_SIZE;
 
         if (!checkFreeBlocksExistence((remainder == 0) ? blocksNum : (blocksNum + 1))) {
-            printf("not enough blocks to write file\n");
+            sprintf(outData,"not enough blocks to write file\n");
             return false;
         }
 
@@ -437,7 +441,11 @@ bool createINode(size_t INodeInd, enum FSObjectType type, const void* data, size
 bool actWithObject(const char* path, enum FSObjectType type, enum ActionType actionType,
                    const void* data, size_t dataSize, size_t* pathINodeInd) {
     if (path[0] != '/') {
-        printf("unknown path, use '/' \n");
+        sprintf(outData,"unknown path, use '/' \n");
+        return false;
+    }
+    if (path[0] == '/' && path[1] == '\0') {
+        sprintf(outData,"you can not create path '/' \n");
         return false;
     }
 
@@ -458,7 +466,7 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
 
         if (newINodeInd == SIZE_MAX) {
             if (actionType == WRITE_ACTION || actionType == GET_INDEXES_ACTION) {
-                printf("no such object\n");
+                sprintf(outData,"no such object\n");
                 return false;
             }
             newINodeInd = OperateWithNameInINode(CREATE_LINK_TO_NAME, currentObjectINodeInd, currentObjectName);
@@ -481,7 +489,7 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
 
     if (actionType == GET_INDEXES_ACTION) {
         if (foundINodeInd == SIZE_MAX) {
-            printf("no such file\n");
+            sprintf(outData,"no such file\n");
             return false;
         }
 
@@ -491,7 +499,7 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
 
     } else if (actionType == CREATE_ACTION) {
         if (foundINodeInd != SIZE_MAX) {
-            printf("directory or file exists\n");
+            sprintf(outData,"directory or file exists\n");
             return false;
         }
 
@@ -504,10 +512,11 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
             removeRecordFromFather(foundINodeInd, currentObjectINodeInd);
             return false;
         }
+        sprintf(outData, "OK");
 
     } else if (actionType == WRITE_ACTION) {
         if (foundINodeInd == SIZE_MAX) {
-            printf("no such file\n");
+            sprintf(outData,"no such file\n");
             return false;
         }
 
@@ -515,7 +524,7 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
         if (dataSize != 0) {
             file = fopen((char*) data, "wb");
             if (file == NULL) {
-                printf("can't open the file %s\n", (char*) data);
+                sprintf(outData,"can't open the file %s\n", (char*) data);
                 return false;
             }
         }
@@ -552,9 +561,11 @@ bool actWithObject(const char* path, enum FSObjectType type, enum ActionType act
         memset(fileData + fileINode.size, '\0', 1);
 
         if (dataSize == 0) {
-            printf("%s: %s\n", path, (char*) fileData);
+            sprintf(outData,"%s: %s\n", path, (char*) fileData);
         } else {
             fprintf(file, "%s", (char*) fileData);
+            fclose(file);
+            sprintf(outData, "OK\n");
         }
         free(fileData);
     }
@@ -573,16 +584,21 @@ void getInfo() {
     size_t possibleBlocksNum = getItemFromSuperBlock(POSSIBLE_BLOCKS_NUM_ITEM);
     size_t possibleINodeNum = getItemFromSuperBlock(POSSIBLE_INODE_NUM_ITEM);
 
-    printf("blocksNum: %d\n", blocksNum);
-    printf("iNodeNum: %d\n", iNodeNum);
-    printf("blockSize: %d\n", blockSize);
-    printf("iNodeSize: %d\n", iNodeSize);
-    printf("freeINodePointer: %d\n", freeINodePointer);
-    printf("freeBlockPointer: %d\n", freeBlockPointer);
-    printf("iNodePointer: %d\n", iNodePointer);
-    printf("blocksPointer: %d\n", blocksPointer);
-    printf("possibleBlocksNum: %d\n", possibleBlocksNum);
-    printf("possibleINodeNum: %d\n", possibleINodeNum);
+    sprintf(outData, "blocksNum: %d\niNodeNum: %d\niNodeSize: %d\nfreeINodePointer: %d\nfreeBlockPointer: %d\n"
+                     "iNodePointer: %d\nblocksPointer: %d\npossibleBlocksNum: %d\npossibleINodeNum: %d\n",
+            blocksNum, iNodeNum, blockSize, iNodeSize, freeINodePointer, freeBlockPointer, iNodePointer,
+            blocksPointer, possibleBlocksNum, possibleINodeNum);
+
+//    printf("blocksNum: %d\n", blocksNum);
+//    printf("iNodeNum: %d\n", iNodeNum);
+//    printf("blockSize: %d\n", blockSize);
+//    printf("iNodeSize: %d\n", iNodeSize);
+//    printf("freeINodePointer: %d\n", freeINodePointer);
+//    printf("freeBlockPointer: %d\n", freeBlockPointer);
+//    printf("iNodePointer: %d\n", iNodePointer);
+//    printf("blocksPointer: %d\n", blocksPointer);
+//    printf("possibleBlocksNum: %d\n", possibleBlocksNum);
+//    printf("possibleINodeNum: %d\n", possibleINodeNum);
 }
 
 void removeObject(size_t INodeId) {
@@ -642,19 +658,26 @@ void printRecursion(size_t INodeId, size_t deep) {
     size_t directoryObjectsNum;
     struct INode iNode = readINode(INodeId);
     if (iNode.type == FILE_TYPE) {
-        printf("file\n");
+        sprintf(outData + outDataPos, "file\n");
+        outDataPos += 5;
+//        printf("file\n");
         for (size_t spaceNum = 0; spaceNum < deep - 1; ++spaceNum) {
-            printf("  ");
+            sprintf(outData + outDataPos, "  ");
+            outDataPos += 2;
         }
-        printf("size: %d\n", iNode.size);
+        sprintf(outData + outDataPos, "size: %5d\n", iNode.size);
+        outDataPos += 12;
         return;
     }
 
-    printf("directory\n");
+    sprintf(outData + outDataPos, "directory\n");
+    outDataPos += 10;
     for (size_t spaceNum = 0; spaceNum < deep - 1; ++spaceNum) {
-        printf("  ");
+        sprintf(outData + outDataPos,"  ");
+        outDataPos += 2;
     }
-    printf("size: %d\n", iNode.size);
+    sprintf(outData + outDataPos,"size: %5d\n", iNode.size);
+    outDataPos += 12;
     size_t elementsNum = 0;
     for (size_t iNodeBlocksInd = 0; iNodeBlocksInd < MAX_INODE_BLOCKS; ++iNodeBlocksInd) {
         if (iNode.blocks[iNodeBlocksInd] == SIZE_MAX) {
@@ -673,11 +696,14 @@ void printRecursion(size_t INodeId, size_t deep) {
             fseek(fileSystem.file, objectsOffset, SEEK_SET);
             fread(&record, sizeof(record), 1, fileSystem.file);
 
-            printf("\n");
+            sprintf(outData + outDataPos,"\n");
+            outDataPos += 1;
             for (size_t spaceNum = 0; spaceNum < deep; ++spaceNum) {
-                printf("  ");
+                sprintf(outData + outDataPos,"  ");
+                outDataPos += 2;
             }
-            printf("%s | ", record.name);
+            sprintf(outData + outDataPos,"%s | ", record.name);
+            outDataPos += strlen(record.name) + 3;
 
             deep++;
             printRecursion(record.iNodeIndex, deep);
@@ -688,7 +714,8 @@ void printRecursion(size_t INodeId, size_t deep) {
     }
 
     for (size_t spaceNum = 0; spaceNum < deep - 1; ++spaceNum) {
-        printf("  ");
+        sprintf(outData + outDataPos,"  ");
+        outDataPos += 2;
     }
 }
 
@@ -742,7 +769,7 @@ void removeRecordFromFather(size_t thisPathInd, size_t fatherPathInd) {
         lastINodeBlocksInd = iNodeBlocksInd;
     }
     if (recordToDeleteOffset == SIZE_MAX || lastRecordOffset == SIZE_MAX) {
-        printf("fatal error\n");
+        sprintf(outData,"fatal error\n");
         return;
     }
 
@@ -771,12 +798,12 @@ void removeName(const char* path) {
     size_t pathINodeInd[2];
 
     if (strcmp(path, "/") == 0) {
-        printf("you can not delete /\n");
+        sprintf(outData,"you can not delete /\n");
     }
 
     bool success = actWithObject(path, ANY_TYPE, GET_INDEXES_ACTION, NULL, 0, pathINodeInd);
     if (!success) {
-        return;;
+        return;
     }
 
     size_t thisPathInd = pathINodeInd[0];
@@ -785,15 +812,19 @@ void removeName(const char* path) {
     removeRecursion(thisPathInd);
 
     removeRecordFromFather(thisPathInd, fatherPathInd);
+    sprintf(outData,"OK\n");
 }
 
 bool printDir(const char* path) {
     size_t pathINodeInd[2];
 
     if (strcmp(path, "/") == 0) {
-        printf("%s | ", path);
+        sprintf(outData + outDataPos, "%s | ", path);
+        outDataPos += strlen(path) + 3;
+
         printRecursion(0, 1);
-        printf("\n");
+        sprintf(outData + outDataPos, "\n");
+        outDataPos = 0;
         return true;
     }
 
@@ -806,14 +837,19 @@ bool printDir(const char* path) {
 
     struct INode fileINode = readINode(thisPathInd);
     if (fileINode.type != DIRECTORY_TYPE) {
-        printf("it is not a directory\n");
+        sprintf(outData, "it is not a directory\n");
         return false;
     }
 
-    printf("%s | ", path);
-    printRecursion(thisPathInd, 1);
-    printf("\n");
+    sprintf(outData + outDataPos, "%s | ", path);
+    outDataPos += strlen(path) + 3;
 
+    printRecursion(thisPathInd, 1);
+    sprintf(outData + outDataPos,"\n");
+    outDataPos += 1;
+
+    sprintf(outData + outDataPos, '\0');
+    outDataPos = 0;
     return true;
 }
 
@@ -821,7 +857,7 @@ bool createFileInFS(const char* fileName, const char* fsFileName) {
     FILE* file = fopen(fileName, "rb");
 
     if (file == NULL) {
-        printf("can't open the file %s\n", fileName);
+        sprintf(outData, "can't open the file %s\n", fileName);
         return false;
     }
 
@@ -830,7 +866,7 @@ bool createFileInFS(const char* fileName, const char* fsFileName) {
     fseek(file, 0, SEEK_SET);
 
     if (fileSize > BLOCK_SIZE * MAX_INODE_BLOCKS) {
-        printf("file is too large file size: %d, maximum: %d\n", fileSize, BLOCK_SIZE * MAX_INODE_BLOCKS);
+        sprintf(outData,"file is too large file size: %d, maximum: %d\n", fileSize, BLOCK_SIZE * MAX_INODE_BLOCKS);
         return false;
     }
 
@@ -840,5 +876,6 @@ bool createFileInFS(const char* fileName, const char* fsFileName) {
         data[dataInd] = (char) fgetc(file);
     }
 
+    fclose(file);
     return actWithObject(fsFileName, FILE_TYPE, CREATE_ACTION, data, fileSize, NULL);
 }
